@@ -75,6 +75,28 @@ assert "Rule 1004: 'drop table' in body → 403" 403 \
 assert "Rule 1005: <script> in query arg → 403" 403 \
     "$(http_code --data-urlencode 'q=<script>alert(1)</script>' -G "$BASE/search")"
 
+# ---- PHASE 3 — response header inspection ---------------------------------
+# nginx /test/response-header returns X-Internal-Data: leaked_token=abc123secret
+# Rule 2001 matches RESPONSE_HEADERS:X-Internal-Data in phase:3 and blocks it.
+# The backend returns 200; Traefik substitutes 403 after WAF phase 3 fires.
+
+assert "Phase 3 pass: normal response header → 200" 200 \
+    "$(http_code "$BASE/")"
+
+assert "Rule 2001: leaked token in response header → 403" 403 \
+    "$(http_code "$BASE/test/response-header")"
+
+# ---- PHASE 4 — response body inspection -----------------------------------
+# nginx /test/response-body returns JSON containing db_password=...
+# Rule 2002 matches RESPONSE_BODY "@contains db_password=" in phase:4.
+# The backend returns 200; Traefik substitutes 403 after WAF phase 4 fires.
+
+assert "Phase 4 pass: normal response body → 200" 200 \
+    "$(http_code "$BASE/hello")"
+
+assert "Rule 2002: credential pattern in response body → 403" 403 \
+    "$(http_code "$BASE/test/response-body")"
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 echo ""
