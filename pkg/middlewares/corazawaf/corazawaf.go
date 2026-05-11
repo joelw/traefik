@@ -102,7 +102,11 @@ func buildErrorCallback(logger zerolog.Logger) func(types.MatchedRule) {
 		if rule.Disruptive() {
 			ev.Msg("WAF: rule triggered")
 		} else {
-			ev.Msg("WAF: rule matched (detection only)")
+			// Disruptive()=false covers two distinct cases:
+			//  1. Rule has no disruptive action (log/setvar/tag only) — always passes through.
+			//  2. Rule has a disruptive action but SecRuleEngine is DetectionOnly.
+			// Both are non-blocking; the rule_id and action fields distinguish them.
+			ev.Msg("WAF: rule matched")
 		}
 	}
 }
