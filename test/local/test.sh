@@ -75,6 +75,25 @@ assert "Rule 1004: 'drop table' in body → 403" 403 \
 assert "Rule 1005: <script> in query arg → 403" 403 \
     "$(http_code --data-urlencode 'q=<script>alert(1)</script>' -G "$BASE/search")"
 
+# ---- ALLOW + LOG — rule fires and logs, but does not block ----------------
+# Rule 1006 matches /allowme with allow,log. The request must reach nginx (200)
+# AND the WAF must have fired the log callback (action=allowed in Traefik logs).
+# We verify the HTTP side here; log presence is checked separately below.
+
+assert "Rule 1006: allow,log on /allowme → 200 (not blocked)" 200 \
+    "$(http_code "$BASE/allowme")"
+
+# Advisory: grep Traefik container logs for the rule 1006 log entry.
+# Requires docker compose to be running from this directory.
+if docker compose logs --no-log-prefix traefik 2>/dev/null | grep -q '"rule_id":1006'; then
+    echo -e "${GREEN}PASS${NC}  Rule 1006: log entry found in Traefik logs  (action=allowed)"
+    PASS=$((PASS + 1))
+else
+    echo -e "${RED}FAIL${NC}  Rule 1006: log entry NOT found in Traefik logs"
+    echo        "       (check Traefik log level is DEBUG or INFO, and rebuild after code changes)"
+    FAIL=$((FAIL + 1))
+fi
+
 # ---- PHASE 3 — response header inspection ---------------------------------
 # nginx /test/response-header returns X-Internal-Data: leaked_token=abc123secret
 # Rule 2001 matches RESPONSE_HEADERS:X-Internal-Data in phase:3 and blocks it.
