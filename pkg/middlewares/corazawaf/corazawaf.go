@@ -86,6 +86,7 @@ func buildErrorCallback(logger zerolog.Logger) func(types.MatchedRule) {
 			Int("rule_id", rule.Rule().ID()).
 			Int("phase", int(rule.Rule().Phase())).
 			Str("severity", rule.Rule().Severity().String()).
+			Str("action", corazaAction(rule.ErrorLog())).
 			Str("message", rule.Message()).
 			Str("uri", rule.URI()).
 			Str("client_ip", rule.ClientIPAddress()).
@@ -99,7 +100,7 @@ func buildErrorCallback(logger zerolog.Logger) func(types.MatchedRule) {
 		}
 
 		if rule.Disruptive() {
-			ev.Msg("WAF: request blocked")
+			ev.Msg("WAF: rule triggered")
 		} else {
 			ev.Msg("WAF: rule matched (detection only)")
 		}
@@ -126,6 +127,21 @@ func severityEvent(logger zerolog.Logger, sev types.RuleSeverity) *zerolog.Event
 	default: // RuleSeverityUnset (-1) or any future value
 		return logger.Warn()
 	}
+}
+
+// corazaAction extracts the action word from Coraza's pre-formatted ErrorLog string.
+// ErrorLog() starts with "Coraza: Access {action} (phase N)." or "Coraza: Warning."
+// The DisruptiveAction field is internal to Coraza and not exposed through the public
+// MatchedRule interface, so this is the only way to distinguish allow from deny.
+func corazaAction(errLog string) string {
+	// e.g. "Coraza: Access denied (phase 1). ..."  → "denied"
+	//      "Coraza: Access allowed (phase 1). ..." → "allowed"
+	//      "Coraza: Warning. ..."                   → "pass"
+	fields := strings.Fields(errLog)
+	if len(fields) >= 3 && fields[1] == "Access" {
+		return strings.TrimRight(fields[2], ".")
+	}
+	return "unknown"
 }
 
 func (c *corazaWAF) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
