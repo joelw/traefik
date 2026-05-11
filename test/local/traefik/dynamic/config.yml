@@ -1,0 +1,30 @@
+http:
+  middlewares:
+    coraza-waf:
+      corazaWAF:
+        # Inline directives applied first.
+        # SecRuleEngine must be On — without it Coraza runs in detection-only mode.
+        directives:
+          - "SecRuleEngine On"
+          - "SecRequestBodyAccess On"
+          - "SecRequestBodyLimit 1048576"
+          - "SecRequestBodyLimitAction Reject"
+        # Additional rules loaded from file (custom test rules + any CRS includes).
+        rulesFile: /etc/coraza/rules.conf
+        maxBodySize: 1048576
+        inspectResponseBody: false
+
+  routers:
+    backend:
+      entryPoints:
+        - web
+      rule: "PathPrefix(`/`)"
+      middlewares:
+        - coraza-waf
+      service: backend-svc
+
+  services:
+    backend-svc:
+      loadBalancer:
+        servers:
+          - url: "http://backend:80"
