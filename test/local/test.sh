@@ -19,10 +19,10 @@ assert() {
     local desc="$1" expected="$2" actual="$3"
     if [ "$actual" = "$expected" ]; then
         echo -e "${GREEN}PASS${NC}  $desc  (got $actual)"
-        ((PASS++))
+        PASS=$((PASS + 1))
     else
         echo -e "${RED}FAIL${NC}  $desc  (expected $expected, got $actual)"
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
     fi
 }
 
