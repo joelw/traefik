@@ -22,6 +22,7 @@ import (
 	"github.com/traefik/traefik/v3/pkg/middlewares/gatewayapi/headermodifier"
 	gapiredirect "github.com/traefik/traefik/v3/pkg/middlewares/gatewayapi/redirect"
 	"github.com/traefik/traefik/v3/pkg/middlewares/gatewayapi/urlrewrite"
+	"github.com/traefik/traefik/v3/pkg/middlewares/corazawaf"
 	"github.com/traefik/traefik/v3/pkg/middlewares/grpcweb"
 	"github.com/traefik/traefik/v3/pkg/middlewares/headers"
 	"github.com/traefik/traefik/v3/pkg/middlewares/inflightreq"
@@ -226,6 +227,16 @@ func (b *Builder) buildConstructor(ctx context.Context, middlewareName string) (
 		}
 		middleware = func(next http.Handler) (http.Handler, error) {
 			return grpcweb.New(ctx, next, *config.GrpcWeb, middlewareName), nil
+		}
+	}
+
+	// CorazaWAF
+	if config.CorazaWAF != nil {
+		if middleware != nil {
+			return nil, badConf
+		}
+		middleware = func(next http.Handler) (http.Handler, error) {
+			return corazawaf.New(ctx, next, *config.CorazaWAF, middlewareName)
 		}
 	}
 
