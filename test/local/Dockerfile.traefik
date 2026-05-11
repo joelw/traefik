@@ -7,7 +7,10 @@ RUN apk add --no-cache git
 WORKDIR /src
 
 # Warm the module cache before copying source so layer is reused on code-only changes.
+# go.mod has a local replace: ./pkg/config/dynamic/ext — copy it first so
+# go mod download can resolve the local path without needing the full source.
 COPY go.mod go.sum ./
+COPY pkg/config/dynamic/ext/ ./pkg/config/dynamic/ext/
 RUN go mod download
 
 COPY . .
