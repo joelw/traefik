@@ -85,7 +85,9 @@ assert "Rule 1006: allow,log on /allowme → 200 (not blocked)" 200 \
 
 # Advisory: grep Traefik container logs for the rule 1006 log entry.
 # Requires docker compose to be running from this directory.
-if docker compose logs --no-log-prefix traefik 2>/dev/null | grep -q '"rule_id":1006'; then
+if docker compose logs --no-log-prefix traefik 2>/dev/null \
+        | sed 's/\x1b\[[0-9;]*m//g' \
+        | grep -q "rule_id=1006"; then
     echo -e "${GREEN}PASS${NC}  Rule 1006: log entry found in Traefik logs  (action=allowed)"
     PASS=$((PASS + 1))
 else
