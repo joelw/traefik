@@ -47,6 +47,7 @@ type Middleware struct {
 	Retry             *Retry             `json:"retry,omitempty" toml:"retry,omitempty" yaml:"retry,omitempty" export:"true"`
 	ContentType       *ContentType       `json:"contentType,omitempty" toml:"contentType,omitempty" yaml:"contentType,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
 	GrpcWeb           *GrpcWeb           `json:"grpcWeb,omitempty" toml:"grpcWeb,omitempty" yaml:"grpcWeb,omitempty" export:"true"`
+	CorazaWAF         *CorazaWAF         `json:"corazaWAF,omitempty" toml:"corazaWAF,omitempty" yaml:"corazaWAF,omitempty" export:"true"`
 
 	Plugin map[string]PluginConf `json:"plugin,omitempty" toml:"plugin,omitempty" yaml:"plugin,omitempty" export:"true"`
 
@@ -61,6 +62,22 @@ type Middleware struct {
 	Snippet                          *Snippet                          `json:"snippet,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	RewriteTarget                    *RewriteTarget                    `json:"rewriteTarget,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	UpstreamVHost                    *UpstreamVHost                    `json:"upstreamVHost,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// CorazaWAF holds the Coraza WAF middleware configuration.
+type CorazaWAF struct {
+	// Directives is a list of inline SecLang directives applied in order.
+	Directives []string `json:"directives,omitempty" toml:"directives,omitempty" yaml:"directives,omitempty" export:"true"`
+	// RulesFile is a path to a SecLang rules file (e.g. a CRS include file).
+	RulesFile string `json:"rulesFile,omitempty" toml:"rulesFile,omitempty" yaml:"rulesFile,omitempty" export:"true"`
+	// MaxBodySize is the maximum request body size in bytes to inspect (default 1 MiB).
+	// Bodies larger than this threshold are passed through without inspection.
+	MaxBodySize int64 `json:"maxBodySize,omitempty" toml:"maxBodySize,omitempty" yaml:"maxBodySize,omitempty" export:"true"`
+	// InspectResponseBody enables response body inspection.
+	// This buffers the entire response in memory before sending it — disable for streaming endpoints.
+	InspectResponseBody bool `json:"inspectResponseBody,omitempty" toml:"inspectResponseBody,omitempty" yaml:"inspectResponseBody,omitempty" export:"true"`
 }
 
 // +k8s:deepcopy-gen=true
