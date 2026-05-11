@@ -130,16 +130,20 @@ func severityEvent(logger zerolog.Logger, sev types.RuleSeverity) *zerolog.Event
 }
 
 // corazaAction extracts the action word from Coraza's pre-formatted ErrorLog string.
-// ErrorLog() starts with "Coraza: Access {action} (phase N)." or "Coraza: Warning."
+// ErrorLog() format: [client "IP"] Coraza: Access {action} (phase N). ...
+//                                  ^[2]^   ^[3]^   ^[4]^
 // The DisruptiveAction field is internal to Coraza and not exposed through the public
 // MatchedRule interface, so this is the only way to distinguish allow from deny.
 func corazaAction(errLog string) string {
-	// e.g. "Coraza: Access denied (phase 1). ..."  → "denied"
-	//      "Coraza: Access allowed (phase 1). ..." → "allowed"
-	//      "Coraza: Warning. ..."                   → "pass"
 	fields := strings.Fields(errLog)
-	if len(fields) >= 3 && fields[1] == "Access" {
-		return strings.TrimRight(fields[2], ".")
+	// fields[0]="[client"  fields[1]="\"IP\"]"  fields[2]="Coraza:"
+	// fields[3]="Access"   fields[4]="allowed"|"denied"|...
+	// Non-disruptive: fields[3]="Warning." → no "Access" token → "pass"
+	if len(fields) >= 5 && fields[3] == "Access" {
+		return strings.TrimRight(fields[4], ".")
+	}
+	if len(fields) >= 4 && fields[3] == "Warning." {
+		return "pass"
 	}
 	return "unknown"
 }
