@@ -13,7 +13,7 @@
 #   -n REQUESTS     Total requests per URL (default: 3000)
 #   -c CONCURRENCY  Concurrent workers    (default: 20)
 #   -w WARMUP       Warmup requests       (default: 300)
-#   -H HOST         Target host           (default: localhost)
+#   -H HOST         Target host           (default: 127.0.0.1)
 #   -h              Show this help
 #
 # Requires: ab (ApacheBench)  — macOS: /usr/sbin/ab   Linux: apache2-utils
@@ -24,7 +24,7 @@ set -euo pipefail
 REQUESTS=3000
 CONCURRENCY=20
 WARMUP=300
-HOST="localhost"
+HOST="127.0.0.1"
 WAF_PORT=80
 BARE_PORT=8081
 
@@ -121,17 +121,17 @@ run_ab() {
 
 # parse_rps <ab_output>  → integer req/sec
 parse_rps() {
-    echo "$1" | grep "^Requests per second" | awk '{printf "%.0f", $4}'
+    echo "$1" | grep "^Requests per second" | awk '{printf "%.0f", $4}' || echo "0"
 }
 
 # parse_p50 <ab_output>  → ms (mean time per request)
 parse_p50() {
-    echo "$1" | grep "^ *50%" | awk '{print $2}'
+    echo "$1" | grep "^ *50%" | awk '{print $2}' || echo "?"
 }
 
 # parse_p99 <ab_output>  → ms
 parse_p99() {
-    echo "$1" | grep "^ *99%" | awk '{print $2}'
+    echo "$1" | grep "^ *99%" | awk '{print $2}' || echo "?"
 }
 
 # overhead_pct <waf_rps> <bare_rps>  → e.g. "-42"  (negative = slower)
