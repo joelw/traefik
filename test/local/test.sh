@@ -75,6 +75,28 @@ assert "Rule 1004: 'drop table' in body → 403" 403 \
 assert "Rule 1005: <script> in query arg → 403" 403 \
     "$(http_code --data-urlencode 'q=<script>alert(1)</script>' -G "$BASE/search")"
 
+# ---- NON-DISRUPTIVE LOG-ONLY — no disruptive action, logs and passes ------
+# Rule 1007 has only non-disruptive actions (log, msg, severity, tag).
+# Request must reach nginx (200); log entry must show disruptive=false, action=pass.
+
+assert "Rule 1007: log-only on /logonly → 200 (not blocked)" 200 \
+    "$(http_code "$BASE/logonly")"
+
+check_log() {
+    docker compose logs --no-log-prefix traefik 2>/dev/null \
+        | sed 's/\x1b\[[0-9;]*m//g' \
+        | grep -q "$1"
+}
+
+if check_log "rule_id=1007"; then
+    echo -e "${GREEN}PASS${NC}  Rule 1007: log entry found in Traefik logs  (disruptive=false action=pass)"
+    PASS=$((PASS + 1))
+else
+    echo -e "${RED}FAIL${NC}  Rule 1007: log entry NOT found in Traefik logs"
+    echo        "       (check Traefik log level is DEBUG or INFO, and rebuild after code changes)"
+    FAIL=$((FAIL + 1))
+fi
+
 # ---- ALLOW + LOG — rule fires and logs, but does not block ----------------
 # Rule 1006 matches /allowme with allow,log. The request must reach nginx (200)
 # AND the WAF must have fired the log callback (action=allowed in Traefik logs).
@@ -83,11 +105,7 @@ assert "Rule 1005: <script> in query arg → 403" 403 \
 assert "Rule 1006: allow,log on /allowme → 200 (not blocked)" 200 \
     "$(http_code "$BASE/allowme")"
 
-# Advisory: grep Traefik container logs for the rule 1006 log entry.
-# Requires docker compose to be running from this directory.
-if docker compose logs --no-log-prefix traefik 2>/dev/null \
-        | sed 's/\x1b\[[0-9;]*m//g' \
-        | grep -q "rule_id=1006"; then
+if check_log "rule_id=1006"; then
     echo -e "${GREEN}PASS${NC}  Rule 1006: log entry found in Traefik logs  (action=allowed)"
     PASS=$((PASS + 1))
 else
