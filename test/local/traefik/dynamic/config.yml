@@ -9,10 +9,13 @@ http:
           - "SecRequestBodyAccess On"
           - "SecRequestBodyLimit 1048576"
           - "SecRequestBodyLimitAction Reject"
+          - "SecResponseBodyAccess On"
+          - "SecResponseBodyMimeType text/plain text/html application/json"
+          - "SecResponseBodyLimit 1048576"
         # Additional rules loaded from file (custom test rules + any CRS includes).
         rulesFile: /etc/coraza/rules.conf
         maxBodySize: 1048576
-        inspectResponseBody: false
+        inspectResponseBody: true
 
   routers:
     backend:
