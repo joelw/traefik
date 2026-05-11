@@ -1,0 +1,31 @@
+services:
+  traefik:
+    # Reuses the image built by test/local — run `docker compose -f ../local/docker-compose.yml build`
+    # first, or uncomment the build block below to build here.
+    image: traefik-coraza-dev
+    # build:
+    #   context: ../..
+    #   dockerfile: test/local/Dockerfile.traefik
+    ports:
+      - "80:80"      # WAF ON  — benchmark target A
+      - "8081:8081"  # WAF OFF — benchmark target B
+      - "9090:9090"  # Traefik dashboard
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./coraza:/etc/coraza:ro
+    networks:
+      - bench
+    depends_on:
+      - backend
+
+  backend:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - bench
+
+networks:
+  bench:
+    driver: bridge

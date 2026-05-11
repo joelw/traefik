@@ -1,0 +1,22 @@
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+log:
+  # Keep logs quiet during benchmarks — debug output adds measurable overhead.
+  level: WARN
+
+api:
+  dashboard: true
+  insecure: true
+
+entryPoints:
+  waf:
+    address: ":80"
+  bare:
+    address: ":8081"
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: false

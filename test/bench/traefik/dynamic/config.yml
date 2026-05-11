@@ -1,0 +1,35 @@
+http:
+  middlewares:
+    coraza-waf:
+      corazaWAF:
+        directives:
+          - "SecRuleEngine On"
+          - "SecRequestBodyAccess On"
+          - "SecRequestBodyLimit 1048576"
+          - "SecRequestBodyLimitAction Reject"
+        rulesFile: /etc/coraza/rules.conf
+        maxBodySize: 1048576
+        inspectResponseBody: false
+
+  routers:
+    # Port 80 — full Coraza WAF middleware chain
+    waf-router:
+      entryPoints:
+        - waf
+      rule: "PathPrefix(`/`)"
+      middlewares:
+        - coraza-waf
+      service: backend-svc
+
+    # Port 8081 — identical routing, no middleware: pure Traefik overhead
+    bare-router:
+      entryPoints:
+        - bare
+      rule: "PathPrefix(`/`)"
+      service: backend-svc
+
+  services:
+    backend-svc:
+      loadBalancer:
+        servers:
+          - url: "http://backend:80"
