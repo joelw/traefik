@@ -10,6 +10,7 @@ import (
 
 	"github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/types"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/traefik/v3/pkg/config/dynamic"
 	"github.com/traefik/traefik/v3/pkg/middlewares"
@@ -36,7 +37,8 @@ func New(ctx context.Context, next http.Handler, config dynamic.CorazaWAF, middl
 	logger.Debug().Msg("Creating middleware")
 
 	cfg := coraza.NewWAFConfig().
-		WithRequestBodyAccess()
+		WithRequestBodyAccess().
+		WithErrorCallback(buildErrorCallback(*logger))
 
 	if config.InspectResponseBody {
 		cfg = cfg.WithResponseBodyAccess()
@@ -68,6 +70,62 @@ func New(ctx context.Context, next http.Handler, config dynamic.CorazaWAF, middl
 		inspectResp: config.InspectResponseBody,
 		name:        middlewareName,
 	}, nil
+}
+
+// buildErrorCallback returns the Coraza error callback closed over the middleware logger.
+//
+// Coraza calls this only when a rule fires AND the rule has the log action
+// (i.e. not nolog). Rules that carry nolog are filtered by Coraza before this
+// callback is invoked — we do not need to check for it ourselves.
+//
+// The callback maps Coraza's eight-level severity scale to zerolog levels and
+// emits a structured log line with the key rule fields.
+func buildErrorCallback(logger zerolog.Logger) func(types.MatchedRule) {
+	return func(rule types.MatchedRule) {
+		ev := severityEvent(logger, rule.Rule().Severity()).
+			Int("rule_id", rule.Rule().ID()).
+			Int("phase", int(rule.Rule().Phase())).
+			Str("severity", rule.Rule().Severity().String()).
+			Str("message", rule.Message()).
+			Str("uri", rule.URI()).
+			Str("client_ip", rule.ClientIPAddress()).
+			Bool("disruptive", rule.Disruptive())
+
+		if d := rule.Data(); d != "" {
+			ev = ev.Str("data", d)
+		}
+		if tags := rule.Rule().Tags(); len(tags) > 0 {
+			ev = ev.Strs("tags", tags)
+		}
+
+		if rule.Disruptive() {
+			ev.Msg("WAF: request blocked")
+		} else {
+			ev.Msg("WAF: rule matched (detection only)")
+		}
+	}
+}
+
+// severityEvent maps Coraza's numeric severity (0 = most severe) to a zerolog event.
+//
+//	0 Emergency, 1 Alert, 2 Critical, 3 Error → Error
+//	4 Warning                                  → Warn
+//	5 Notice, 6 Info                           → Info
+//	7 Debug                                    → Debug
+//	-1 Unset (no severity action on the rule)  → Warn
+func severityEvent(logger zerolog.Logger, sev types.RuleSeverity) *zerolog.Event {
+	switch {
+	case sev >= types.RuleSeverityEmergency && sev <= types.RuleSeverityError:
+		return logger.Error()
+	case sev == types.RuleSeverityWarning:
+		return logger.Warn()
+	case sev == types.RuleSeverityNotice || sev == types.RuleSeverityInfo:
+		return logger.Info()
+	case sev == types.RuleSeverityDebug:
+		return logger.Debug()
+	default: // RuleSeverityUnset (-1) or any future value
+		return logger.Warn()
+	}
 }
 
 func (c *corazaWAF) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
