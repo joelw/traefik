@@ -69,9 +69,18 @@ type Middleware struct {
 // CorazaWAF holds the Coraza WAF middleware configuration.
 type CorazaWAF struct {
 	// Directives is a list of inline SecLang directives applied in order.
+	// Applied after the OWASP CRS base config (if UseOWASPCRS is true) so that
+	// directives here take precedence (e.g. SecRuleEngine On overrides the CRS default).
 	Directives []string `json:"directives,omitempty" toml:"directives,omitempty" yaml:"directives,omitempty" export:"true"`
-	// RulesFile is a path to a SecLang rules file (e.g. a CRS include file).
-	RulesFile string `json:"rulesFile,omitempty" toml:"rulesFile,omitempty" yaml:"rulesFile,omitempty" export:"true"`
+	// RulesFiles is a list of paths to SecLang rules files loaded in order.
+	// Supports absolute OS paths (e.g. /etc/coraza/custom.conf) and, when
+	// UseOWASPCRS is true, CRS-relative paths (e.g. @owasp_crs/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf).
+	// Loaded after the OWASP CRS rules (if UseOWASPCRS is true).
+	RulesFiles []string `json:"rulesFiles,omitempty" toml:"rulesFiles,omitempty" yaml:"rulesFiles,omitempty" export:"true"`
+	// UseOWASPCRS loads the bundled OWASP Core Rule Set.
+	// Include order: @coraza.conf-recommended → @crs-setup.conf.example → Directives → @owasp_crs/*.conf → RulesFiles.
+	// Add "SecRuleEngine On" to Directives to switch from the CRS default (DetectionOnly).
+	UseOWASPCRS bool `json:"useOWASPCRS,omitempty" toml:"useOWASPCRS,omitempty" yaml:"useOWASPCRS,omitempty" export:"true"`
 	// MaxBodySize is the maximum request body size in bytes to inspect (default 1 MiB).
 	// Bodies larger than this threshold are passed through without inspection.
 	MaxBodySize int64 `json:"maxBodySize,omitempty" toml:"maxBodySize,omitempty" yaml:"maxBodySize,omitempty" export:"true"`

@@ -125,7 +125,10 @@ require (
 	sigs.k8s.io/yaml v1.6.0
 )
 
-require github.com/corazawaf/coraza/v3 v3.7.0
+require (
+	github.com/corazawaf/coraza-coreruleset/v4 v4.25.0
+	github.com/corazawaf/coraza/v3 v3.7.0
+)
 
 require (
 	cloud.google.com/go/auth v0.20.0 // indirect
