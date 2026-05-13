@@ -5,9 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/corazawaf/coraza-coreruleset/v4"
 	"github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/types"
 	"github.com/rs/zerolog"
@@ -51,11 +55,32 @@ func New(ctx context.Context, next http.Handler, config dynamic.CorazaWAF, middl
 	cfg = cfg.WithRequestBodyLimit(int(maxBodySize)).
 		WithRequestBodyInMemoryLimit(int(maxBodySize))
 
+	if config.UseOWASPCRS {
+		// compositeFS routes absolute OS paths to the real filesystem and
+		// everything else (CRS @ paths) to the embedded CRS. This lets
+		// RulesFiles with absolute paths coexist with CRS includes.
+		cfg = cfg.WithRootFS(newCompositeFS(coreruleset.FS))
+
+		// Load order:
+		//   1. @coraza.conf-recommended  — base Coraza config (sets DetectionOnly, body parsers, etc.)
+		//   2. @crs-setup.conf.example   — CRS defaults (paranoia level, etc.)
+		//   3. User Directives           — override engine mode, CRS tuning variables
+		//   4. @owasp_crs/*.conf         — all CRS rules
+		//   5. User RulesFiles           — site-specific rules, exclusions, overrides
+		cfg = cfg.WithDirectives("Include @coraza.conf-recommended")
+		cfg = cfg.WithDirectives("Include @crs-setup.conf.example")
+	}
+
 	for _, d := range config.Directives {
 		cfg = cfg.WithDirectives(d)
 	}
-	if config.RulesFile != "" {
-		cfg = cfg.WithDirectivesFromFile(config.RulesFile)
+
+	if config.UseOWASPCRS {
+		cfg = cfg.WithDirectives("Include @owasp_crs/*.conf")
+	}
+
+	for _, f := range config.RulesFiles {
+		cfg = cfg.WithDirectivesFromFile(f)
 	}
 
 	waf, err := coraza.NewWAF(cfg)
@@ -70,6 +95,71 @@ func New(ctx context.Context, next http.Handler, config dynamic.CorazaWAF, middl
 		inspectResp: config.InspectResponseBody,
 		name:        middlewareName,
 	}, nil
+}
+
+// compositeFS merges the embedded CRS filesystem with the OS filesystem.
+//
+// Routing rules:
+//   - Absolute path containing '@' (e.g. /some/dir/@owasp_crs/rule.conf):
+//     the prefix up to '@' is stripped and the remainder is served from the
+//     CRS FS. This mirrors the wrapFS in coraza-coreruleset and handles the
+//     case where Coraza prepends currentDir to an @-relative Include path.
+//   - Absolute path without '@' (e.g. /etc/coraza/custom.conf):
+//     served from the real OS filesystem, enabling ConfigMap-mounted rule files.
+//   - Relative path (e.g. @owasp_crs/REQUEST-911.conf):
+//     served from the CRS FS.
+type compositeFS struct {
+	crs fs.FS
+}
+
+func newCompositeFS(crsFS fs.FS) compositeFS {
+	return compositeFS{crs: crsFS}
+}
+
+func (c compositeFS) Open(name string) (fs.File, error) {
+	if filepath.IsAbs(name) {
+		if idx := strings.Index(name, "@"); idx >= 0 {
+			return c.crs.Open(name[idx:])
+		}
+		return os.Open(name)
+	}
+	return c.crs.Open(name)
+}
+
+// ReadFile is called by Coraza's parser via fs.ReadFile(root, path).
+// Implementing ReadFileFS avoids the Open+read round-trip and ensures the
+// CRS wrapFS.ReadFile path (which handles the @ stripping) is used.
+func (c compositeFS) ReadFile(name string) ([]byte, error) {
+	if filepath.IsAbs(name) {
+		if idx := strings.Index(name, "@"); idx >= 0 {
+			name = name[idx:]
+		} else {
+			return os.ReadFile(name)
+		}
+	}
+	type readFiler interface{ ReadFile(string) ([]byte, error) }
+	if rf, ok := c.crs.(readFiler); ok {
+		return rf.ReadFile(name)
+	}
+	f, err := c.crs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
+}
+
+// Glob is used by Coraza for patterns like @owasp_crs/*.conf.
+// Absolute patterns without '@' are globbed against the OS filesystem.
+func (c compositeFS) Glob(pattern string) ([]string, error) {
+	if filepath.IsAbs(pattern) {
+		if idx := strings.Index(pattern, "@"); idx >= 0 {
+			pattern = pattern[idx:]
+		} else {
+			return filepath.Glob(pattern)
+		}
+	}
+	return fs.Glob(c.crs, pattern)
 }
 
 // buildErrorCallback returns the Coraza error callback closed over the middleware logger.
@@ -135,7 +225,9 @@ func severityEvent(logger zerolog.Logger, sev types.RuleSeverity) *zerolog.Event
 
 // corazaAction extracts the action word from Coraza's pre-formatted ErrorLog string.
 // ErrorLog() format: [client "IP"] Coraza: Access {action} (phase N). ...
-//                                  ^[2]^   ^[3]^   ^[4]^
+//
+//	fields: [0]="[client"  [1]="\"IP\"]"  [2]="Coraza:"  [3]="Access"  [4]="allowed"|"denied"|...
+//
 // The DisruptiveAction field is internal to Coraza and not exposed through the public
 // MatchedRule interface, so this is the only way to distinguish allow from deny.
 func corazaAction(errLog string) string {

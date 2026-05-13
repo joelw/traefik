@@ -2,12 +2,13 @@ http:
   middlewares:
     coraza-waf:
       corazaWAF:
+        useOWASPCRS: true
         directives:
           - "SecRuleEngine On"
-          - "SecRequestBodyAccess On"
           - "SecRequestBodyLimit 1048576"
           - "SecRequestBodyLimitAction Reject"
-        rulesFile: /etc/coraza/rules.conf
+        rulesFiles:
+          - /etc/coraza/rules.conf
         maxBodySize: 1048576
         inspectResponseBody: false
 

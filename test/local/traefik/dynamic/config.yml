@@ -4,16 +4,23 @@ http:
       corazaWAF:
         # Inline directives applied first.
         # SecRuleEngine must be On — without it Coraza runs in detection-only mode.
+        # useOWASPCRS embeds the bundled CRS (v4.25.0).
+        # Include order: @coraza.conf-recommended → @crs-setup.conf.example
+        #   → directives below → @owasp_crs/*.conf → rulesFiles below.
+        useOWASPCRS: true
         directives:
+          # @coraza.conf-recommended sets DetectionOnly; override here for blocking mode.
           - "SecRuleEngine On"
-          - "SecRequestBodyAccess On"
+          # Body inspection settings (supplement the CRS defaults).
           - "SecRequestBodyLimit 1048576"
           - "SecRequestBodyLimitAction Reject"
           - "SecResponseBodyAccess On"
           - "SecResponseBodyMimeType text/plain text/html application/json"
           - "SecResponseBodyLimit 1048576"
-        # Additional rules loaded from file (custom test rules + any CRS includes).
-        rulesFile: /etc/coraza/rules.conf
+        # rulesFiles: list of additional rule files loaded after the CRS.
+        # Supports absolute OS paths (ConfigMap mounts) and CRS-relative @ paths.
+        rulesFiles:
+          - /etc/coraza/rules.conf
         maxBodySize: 1048576
         inspectResponseBody: true
 
