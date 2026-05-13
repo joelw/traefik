@@ -1,0 +1,28 @@
+services:
+  traefik:
+    build:
+      context: ../..
+      dockerfile: test/local/Dockerfile.traefik
+    image: traefik-coraza-dev
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./coraza:/etc/coraza:ro
+    networks:
+      - internal
+    depends_on:
+      - backend
+
+  backend:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
