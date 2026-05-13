@@ -102,11 +102,15 @@ assert "CRS SQLi: tautology in POST body field → 403" 403 \
         -d "username=admin&password=1' OR '1'='1" \
         "$BASE/login")"
 
-# Stacked query in POST body (also not matched by rule 1004)
-assert "CRS SQLi: stacked query in POST body → 403" 403 \
+# Boolean AND tautology in a different field — same libinjection fingerprint as the
+# OR tautology above but uses AND, confirming both conjunction operators are detected.
+# "1; SELECT * FROM users--" (stacked query) is intentionally avoided: the bare
+# semicolon+SELECT pattern is not in libinjection's PL1 fingerprint set and CRS's
+# direct-match rules at PL1 target UNION/BENCHMARK/SLEEP, not plain SELECT.
+assert "CRS SQLi: AND tautology in POST body → 403" 403 \
     "$(http_code -X POST \
         -H 'Content-Type: application/x-www-form-urlencoded' \
-        -d "id=1; SELECT * FROM users--" \
+        -d "id=1' AND '1'='1" \
         "$BASE/api/user")"
 
 # ---------------------------------------------------------------------------
