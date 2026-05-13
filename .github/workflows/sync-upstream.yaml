@@ -1,0 +1,130 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Upstream tag to merge (e.g., v3.7.2). Leave empty for auto-detect.'
+        required: false
+        default: ''
+      minor_version:
+        description: 'Minor version series (e.g., 3.7). Leave empty to derive from tag.'
+        required: false
+        default: ''
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/traefik/traefik.git
+          git fetch upstream --tags
+
+      - name: Determine target tag
+        id: target
+        run: |
+          UPSTREAM_TAG="${{ github.event.inputs.upstream_tag }}"
+          MINOR_VERSION="${{ github.event.inputs.minor_version }}"
+
+          if [ -z "$MINOR_VERSION" ] && [ -z "$UPSTREAM_TAG" ]; then
+            # Default to 3.7 series if nothing provided
+            MINOR_VERSION="3.7"
+          fi
+
+          if [ -n "$UPSTREAM_TAG" ]; then
+            # Derive minor from the provided tag (v3.7.2 -> 3.7)
+            MINOR_VERSION=$(echo "$UPSTREAM_TAG" | sed 's/^v//' | cut -d. -f1,2)
+          else
+            # Auto-detect latest tag in the minor series
+            UPSTREAM_TAG=$(git tag -l "v${MINOR_VERSION}.*" --sort=-version:refname | head -n 1)
+            if [ -z "$UPSTREAM_TAG" ]; then
+              echo "::error::No upstream tags found for v${MINOR_VERSION}.* series"
+              exit 1
+            fi
+          fi
+
+          BRANCH="v${MINOR_VERSION}-coraza"
+          echo "upstream_tag=${UPSTREAM_TAG}" >> "$GITHUB_OUTPUT"
+          echo "minor_version=${MINOR_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "Targeting: tag=${UPSTREAM_TAG}, branch=${BRANCH}"
+
+      - name: Check if already tagged
+        id: check
+        run: |
+          UPSTREAM_TAG="${{ steps.target.outputs.upstream_tag }}"
+
+          # Extract CRS version from go.mod
+          CRS_VERSION=$(grep 'corazawaf/coraza-coreruleset' go.mod | grep -oP 'v[\d.]+' | head -1)
+          if [ -z "$CRS_VERSION" ]; then
+            echo "::error::Could not extract CRS version from go.mod"
+            exit 1
+          fi
+
+          CORAZA_TAG="${UPSTREAM_TAG}-coraza-${CRS_VERSION}"
+          echo "coraza_tag=${CORAZA_TAG}" >> "$GITHUB_OUTPUT"
+          echo "crs_version=${CRS_VERSION}" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse "$CORAZA_TAG" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${CORAZA_TAG} already exists. Nothing to do."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Will create tag: ${CORAZA_TAG}"
+          fi
+
+      - name: Create or checkout branch
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          BRANCH="${{ steps.target.outputs.branch }}"
+
+          if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH}"; then
+            git checkout "$BRANCH"
+          else
+            echo "Branch ${BRANCH} does not exist. Creating from feature/coraza..."
+            git checkout -b "$BRANCH" origin/feature/coraza
+            git push origin "$BRANCH"
+          fi
+
+      - name: Merge upstream tag
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          UPSTREAM_TAG="${{ steps.target.outputs.upstream_tag }}"
+          echo "Merging ${UPSTREAM_TAG} into $(git branch --show-current)..."
+
+          if ! git merge "$UPSTREAM_TAG" --no-edit -m "merge: upstream ${UPSTREAM_TAG}"; then
+            echo "::error::Merge conflict while merging ${UPSTREAM_TAG}. Resolve manually."
+            git diff --name-only --diff-filter=U
+            git merge --abort
+            exit 1
+          fi
+
+      - name: Create tag and push
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          CORAZA_TAG="${{ steps.check.outputs.coraza_tag }}"
+          BRANCH="${{ steps.target.outputs.branch }}"
+          UPSTREAM_TAG="${{ steps.target.outputs.upstream_tag }}"
+          CRS_VERSION="${{ steps.check.outputs.crs_version }}"
+
+          git tag -a "$CORAZA_TAG" -m "Traefik ${UPSTREAM_TAG} with Coraza WAF (CRS ${CRS_VERSION})"
+          git push origin "$BRANCH"
+          git push origin "$CORAZA_TAG"
+          echo "Successfully created and pushed ${CORAZA_TAG}"
