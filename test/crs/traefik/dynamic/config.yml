@@ -1,0 +1,41 @@
+http:
+  middlewares:
+    coraza-waf:
+      corazaWAF:
+        # Embed the bundled OWASP CRS v4.25.0.
+        # Include order:
+        #   @coraza.conf-recommended   ← sets DetectionOnly, body parsers, JSON/XML processors
+        #   @crs-setup.conf.example    ← paranoia level 1, anomaly threshold 5 (defaults)
+        #   directives below           ← override engine mode
+        #   @owasp_crs/*.conf          ← all 200+ CRS rules
+        #   rulesFiles below           ← site-specific custom rules (loaded last, can override CRS)
+        useOWASPCRS: true
+        directives:
+          # @coraza.conf-recommended defaults to DetectionOnly; switch to blocking mode.
+          - "SecRuleEngine On"
+          # Body limits (CRS default from @crs-setup.conf.example is already sensible,
+          # but being explicit here makes the config self-documenting).
+          - "SecRequestBodyLimit 1048576"
+          - "SecRequestBodyLimitAction Reject"
+        # Custom rules loaded after CRS. The compositeFS routes absolute paths
+        # to the OS filesystem, so ConfigMap mounts at /etc/coraza/ work fine
+        # alongside CRS @ paths.
+        rulesFiles:
+          - /etc/coraza/rules.conf
+        maxBodySize: 1048576
+        inspectResponseBody: false
+
+  routers:
+    backend:
+      entryPoints:
+        - web
+      rule: "PathPrefix(`/`)"
+      middlewares:
+        - coraza-waf
+      service: backend-svc
+
+  services:
+    backend-svc:
+      loadBalancer:
+        servers:
+          - url: "http://backend:80"
