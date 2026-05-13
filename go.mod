@@ -433,3 +433,5 @@ replace (
 exclude github.com/tencentcloud/tencentcloud-sdk-go v3.0.83+incompatible
 
 require github.com/corazawaf/coraza/v3 v3.7.0
+
+require github.com/corazawaf/coraza-coreruleset/v4 v4.25.0

@@ -561,6 +561,11 @@ func (in *CorazaWAF) DeepCopyInto(out *CorazaWAF) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.RulesFiles != nil {
+		in, out := &in.RulesFiles, &out.RulesFiles
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
