@@ -183,7 +183,7 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v1.0.0-rc.1 // indirect
-	github.com/corazawaf/libinjection-go v0.3.2 // indirect
+	github.com/corazawaf/libinjection-go v0.3.3 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -434,6 +434,6 @@ replace (
 // tencentcloud uses monorepo with multimodule but the go.mod files are incomplete.
 exclude github.com/tencentcloud/tencentcloud-sdk-go v3.0.83+incompatible
 
-require github.com/corazawaf/coraza/v3 v3.7.0
+require github.com/corazawaf/coraza/v3 v3.8.1
 
 require github.com/corazawaf/coraza-coreruleset/v4 v4.25.0
