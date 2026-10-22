@@ -272,7 +272,7 @@ func (c *corazaWAF) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 	if it := tx.ProcessRequestHeaders(); it != nil {
-		c.interrupt(rw, it)
+		writeInterruption(rw, it)
 		return
 	}
 
@@ -290,7 +290,7 @@ func (c *corazaWAF) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				if it, _, err := tx.ReadRequestBodyFrom(bytes.NewReader(buf.Bytes())); err != nil {
 					log.Ctx(req.Context()).Warn().Err(err).Str("middleware", c.name).Msg("corazawaf: error writing request body")
 				} else if it != nil {
-					c.interrupt(rw, it)
+					writeInterruption(rw, it)
 					return
 				}
 			}
@@ -301,7 +301,7 @@ func (c *corazaWAF) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if it, err := tx.ProcessRequestBody(); err != nil {
 		log.Ctx(req.Context()).Warn().Err(err).Str("middleware", c.name).Msg("corazawaf: error processing request body")
 	} else if it != nil {
-		c.interrupt(rw, it)
+		writeInterruption(rw, it)
 		return
 	}
 
@@ -311,39 +311,16 @@ func (c *corazaWAF) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Wrap the ResponseWriter to capture status + body before flushing.
-	wrappedRW := newResponseCapture(rw)
-	c.next.ServeHTTP(wrappedRW, req)
-
-	// Phase 3 — response headers.
-	for key, vals := range wrappedRW.Header() {
-		for _, v := range vals {
-			tx.AddResponseHeader(key, v)
-		}
+	// Phases 3 and 4 run in the interceptor while the response is written.
+	interceptor := newResponseInterceptor(rw, tx, proto)
+	c.next.ServeHTTP(interceptor, req)
+	if err := interceptor.finish(); err != nil {
+		log.Ctx(req.Context()).Warn().Err(err).Str("middleware", c.name).Msg("corazawaf: error processing response")
 	}
-	if it := tx.ProcessResponseHeaders(wrappedRW.status, proto); it != nil {
-		http.Error(rw, http.StatusText(it.Status), it.Status)
-		return
-	}
-
-	// Phase 4 — response body.
-	if _, _, err := tx.WriteResponseBody(wrappedRW.body.Bytes()); err != nil {
-		log.Ctx(req.Context()).Warn().Err(err).Str("middleware", c.name).Msg("corazawaf: error writing response body")
-	}
-	if it, err := tx.ProcessResponseBody(); err != nil {
-		log.Ctx(req.Context()).Warn().Err(err).Str("middleware", c.name).Msg("corazawaf: error processing response body")
-	} else if it != nil {
-		// We already captured the response; send an error response instead.
-		http.Error(rw, http.StatusText(it.Status), it.Status)
-		return
-	}
-
-	// Flush the captured response.
-	rw.WriteHeader(wrappedRW.status)
-	_, _ = rw.Write(wrappedRW.body.Bytes())
 }
 
-func (c *corazaWAF) interrupt(rw http.ResponseWriter, it *types.Interruption) {
+// writeInterruption sends the interruption status, or 403 when the rule sets none.
+func writeInterruption(rw http.ResponseWriter, it *types.Interruption) {
 	status := it.Status
 	if status == 0 {
 		status = http.StatusForbidden
@@ -359,23 +336,4 @@ func splitHostPort(addr string) (string, int) {
 		return addr[:i], port
 	}
 	return addr, 0
-}
-
-// responseCapture buffers a downstream response so Coraza can inspect it.
-type responseCapture struct {
-	http.ResponseWriter
-	status int
-	body   bytes.Buffer
-}
-
-func newResponseCapture(rw http.ResponseWriter) *responseCapture {
-	return &responseCapture{ResponseWriter: rw, status: http.StatusOK}
-}
-
-func (r *responseCapture) WriteHeader(code int) {
-	r.status = code
-}
-
-func (r *responseCapture) Write(b []byte) (int, error) {
-	return r.body.Write(b)
 }
